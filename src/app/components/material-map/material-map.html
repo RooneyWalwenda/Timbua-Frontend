@@ -1,0 +1,298 @@
+<div class="map-container">
+  <div id="map"></div>
+
+  <!-- Loading Overlay -->
+  @if (isLoading()) {
+    <div class="loading-overlay">
+      <div class="loading-spinner"></div>
+      <p>Loading materials data...</p>
+    </div>
+  }
+
+  <!-- Map Not Initialized Warning -->
+  @if (!mapInitialized() && !isLoading()) {
+    <div class="error-overlay">
+      <div class="error-icon">🗺️</div>
+      <h3>Map Not Loaded</h3>
+      <p>The map could not be initialized. Please check the browser console for errors.</p>
+      <button class="retry-btn" (click)="initMap()">Retry Map</button>
+    </div>
+  }
+
+  <!-- API Error Notice -->
+  @if (hasError() && !isLoading()) {
+    <div class="api-error-notice">
+      <div class="error-icon">⚠️</div>
+      <div class="error-content">
+        <h4>Connection Issue</h4>
+        <p>Unable to load materials data. Please check your connection.</p>
+        <button class="retry-btn-small" (click)="retryLoadMaterials()">Retry Connection</button>
+      </div>
+    </div>
+  }
+
+  <!-- Controls Panel -->
+  @if (materials().length > 0 && mapInitialized()) {
+    <div class="controls-panel">
+      <h3>Filter Materials</h3>
+      
+      <div class="filter-group">
+        <label for="materialFilter">Material Name</label>
+        <input 
+          id="materialFilter" 
+          type="text" 
+          placeholder="Search materials..."
+          [value]="filters().material"
+          (input)="onFilterChange('material', $any($event.target).value)">
+      </div>
+
+      <div class="filter-group">
+        <label for="typeFilter">Material Type</label>
+        <select 
+          id="typeFilter" 
+          [value]="filters().type"
+          (change)="onFilterChange('type', $any($event.target).value)">
+          <option value="">All Types</option>
+          <option value="Blocks">🧱 Blocks</option>
+          <option value="Bricks">🧱 Bricks</option>
+          <option value="Sand">🏖️ Sand</option>
+          <option value="Stones">🪨 Stones</option>
+          <option value="Limestone">🪨 Limestone</option>
+          <option value="Wood">🪵 Wood/Timber</option>
+          <option value="Cement">🏗️ Cement</option>
+          <option value="Concrete">🏗️ Concrete</option>
+          <option value="Metal">⚙️ Metal</option>
+          <option value="Glass">🔲 Glass</option>
+          <option value="Makuti">🌴 Makuti</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="countyFilter">County</label>
+        <select 
+          id="countyFilter" 
+          [value]="filters().county"
+          (change)="onFilterChange('county', $any($event.target).value)">
+          <option value="">All Counties</option>
+          @for (county of availableCounties(); track county) {
+            <option [value]="county">{{ county }}</option>
+          }
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <label for="subCountyFilter">Sub-County</label>
+        <select 
+          id="subCountyFilter" 
+          [value]="filters().subCounty"
+          [disabled]="!filters().county"
+          (change)="onFilterChange('subCounty', $any($event.target).value)">
+          <option value="">All Sub-Counties</option>
+          @if (filters().county) {
+            @for (subCounty of availableSubCounties(); track subCounty) {
+              <option [value]="subCounty">{{ subCounty }}</option>
+            }
+          }
+        </select>
+        @if (!filters().county) {
+          <small class="filter-hint">Select a county first</small>
+        }
+      </div>
+
+      <div class="filter-buttons">
+        <button class="apply-btn" (click)="applyFilters()">Apply Filters</button>
+        <button class="clear-btn" (click)="clearFilters()">Clear All</button>
+      </div>
+
+      <!-- Materials Count -->
+      <div class="materials-count">
+        Showing {{ filteredMaterials().length }} of {{ materials().length }} materials
+      </div>
+
+      <!-- Legend -->
+      <div class="legend">
+        <h4>Material Icons</h4>
+        <div class="legend-item">
+          <span class="legend-icon">🧱</span>
+          <span>Blocks/Bricks</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-icon">🏖️</span>
+          <span>Sand</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-icon">🪨</span>
+          <span>Stones</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-icon">🏗️</span>
+          <span>Cement/Concrete</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-icon">🪵</span>
+          <span>Wood/Timber</span>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- No Data Message -->
+  @if (!isLoading() && !hasError() && materials().length === 0 && mapInitialized()) {
+    <div class="no-data-message">
+      <div class="no-data-icon">📊</div>
+      <h3>No Materials Data</h3>
+      <p>No materials data available to display.</p>
+    </div>
+  }
+
+  <!-- Material Details Panel -->
+  @if (selectedMaterial(); as material) {
+    <div class="material-details-panel">
+      <!-- Fixed Header -->
+      <div class="material-header">
+        <div class="header-content">
+          <span class="material-icon-large">{{ material.icon || '📦' }}</span>
+          <div class="material-title">
+            <h3>{{ material.name }}</h3>
+            <div class="material-types">
+              @for (type of material.type; track type) {
+                <span class="material-type-badge">
+                  {{ getTypeIcon(type) }} {{ type }}
+                </span>
+              }
+            </div>
+          </div>
+        </div>
+        <button class="close-btn" (click)="closeMaterialDetails()" aria-label="Close details">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6L6 18M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      
+      <!-- Scrollable Content Area -->
+      <div class="material-content-scrollable">
+        <!-- Basic Information -->
+        <div class="detail-section">
+          <h4>📊 Basic Information</h4>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <strong>Material ID:</strong>
+              <span>{{ material.id }}</span>
+            </div>
+            <div class="detail-item">
+              <strong>Questionnaire No:</strong>
+              <span>{{ material.questionnaireNo }}</span>
+            </div>
+            <div class="detail-item">
+              <strong>Research Assistant:</strong>
+              <span>{{ material.researchAssistantNo }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Location Information -->
+        <div class="detail-section">
+          <h4>📍 Location Information</h4>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <strong>County:</strong>
+              <span>{{ material.location.county }}</span>
+            </div>
+            <div class="detail-item">
+              <strong>Sub-County:</strong>
+              <span>{{ material.location.subCounty }}</span>
+            </div>
+            <div class="detail-item full-width">
+              <strong>Specific Location:</strong>
+              <span>{{ material.location.name }}</span>
+            </div>
+            <div class="detail-item full-width">
+              <strong>Coordinates:</strong>
+              <span>{{ material.location.latitude | number:'1.4-4' }}, {{ material.location.longitude | number:'1.4-4' }}</span>
+            </div>
+            @if (material.similarLocations && material.similarLocations !== 'null') {
+              <div class="detail-item full-width">
+                <strong>Similar Locations:</strong>
+                <span>{{ material.similarLocations }}</span>
+              </div>
+            }
+          </div>
+        </div>
+
+        <!-- Production Details -->
+        <div class="detail-section">
+          <h4>🏭 Production Details</h4>
+          <div class="detail-grid">
+            <div class="detail-item">
+              <strong>Industry Size:</strong>
+              <span>{{ material.sizeOfManufacturingIndustry }}</span>
+            </div>
+            <div class="detail-item">
+              <strong>Period of Manufacture:</strong>
+              <span>{{ material.periodOfManufacture }}</span>
+            </div>
+            <div class="detail-item">
+              <strong>Owner Type:</strong>
+              <span>{{ material.ownerOfMaterial }}</span>
+            </div>
+            <div class="detail-item">
+              <strong>Employees:</strong>
+              <span>{{ material.numberOfPeopleEmployed }}</span>
+            </div>
+            <div class="detail-item">
+              <strong>Daily Production:</strong>
+              <span>{{ material.volumeProducedPerDay }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Usage Information -->
+        <div class="detail-section">
+          <h4>🔧 Usage Information</h4>
+          <div class="detail-grid">
+            <div class="detail-item full-width">
+              <strong>Material Usage:</strong>
+              <span>{{ material.materialUsage }}</span>
+            </div>
+            <div class="detail-item full-width">
+              <strong>Used In:</strong>
+              <span>{{ material.materialUsedIn }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Challenges -->
+        @if (material.challenges && material.challenges.length > 0) {
+          <div class="detail-section">
+            <h4>⚠️ Challenges</h4>
+            <ul class="challenges-list">
+              @for (challenge of material.challenges; track challenge) {
+                <li>{{ challenge }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        <!-- Additional Information -->
+        <div class="detail-section">
+          <h4>📝 Additional Information</h4>
+          <div class="detail-grid">
+            @if (material.comments && material.comments !== 'null') {
+              <div class="detail-item full-width">
+                <strong>Comments:</strong>
+                <span class="comments-text">{{ material.comments }}</span>
+              </div>
+            }
+            @if (material.timestamp) {
+              <div class="detail-item">
+                <strong>Recorded:</strong>
+                <span>{{ material.timestamp | date:'medium' }}</span>
+              </div>
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+</div>

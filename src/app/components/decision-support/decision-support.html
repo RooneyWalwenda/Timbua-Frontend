@@ -1,0 +1,408 @@
+<div class="decision-support-container">
+  <div class="header-section">
+    <h2>🏗️ Construction Site Decision Support</h2>
+    <p>Click on the map to analyze a potential construction site. The system will check restrictions and find nearby material sources.</p>
+  </div>
+
+  <!-- Data Loading Indicator -->
+  @if (isLoadingRestrictions()) {
+    <div class="loading-restrictions">
+      <div class="loading-spinner"></div>
+      <p>Loading restricted areas from local GeoJSON data...</p>
+    </div>
+  }
+
+  @if (restrictedZonesData.length > 0 && !isLoadingRestrictions()) {
+    <div class="data-source-info">
+      <small>📁 Using local GeoJSON data ({{ restrictedZonesData.length }} restricted zones loaded)</small>
+    </div>
+  }
+
+  <div class="content-wrapper">
+    <!-- Map Section -->
+    <div class="map-section">
+      <!-- Enhanced Map Controls -->
+      <div class="map-controls">
+        <!-- Search Box -->
+        <div class="search-box">
+          <div class="search-input-group">
+            <input
+              type="text"
+              [value]="searchQuery()"
+              (input)="onSearchInput($event)"
+              (keyup.enter)="searchLocation(searchQuery())"
+              placeholder="Search locations in Kenya..."
+              class="search-input"
+            >
+            <button 
+              (click)="searchLocation(searchQuery())" 
+              class="search-btn"
+              [disabled]="isSearching()"
+            >
+              @if (isSearching()) {
+                <div class="mini-spinner"></div>
+              } @else {
+                🔍
+              }
+            </button>
+          </div>
+          
+          <!-- Search Results Dropdown -->
+          @if (searchResults().length > 0) {
+            <div class="search-results">
+              @for (result of searchResults(); track result.place_id) {
+                <div 
+                  class="search-result-item" 
+                  (click)="zoomToLocation(result)"
+                >
+                  <div class="result-name">{{ result.display_name }}</div>
+                  <div class="result-type">{{ result.type }}</div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Coordinate Input -->
+        <div class="coordinate-input">
+          <h4>📍 Add Pin by Coordinates</h4>
+          <div class="coord-input-group">
+            <input
+              type="number"
+              step="any"
+              [value]="coordinateInput().lat"
+              (input)="updateCoordinateInput('lat', $event)"
+              placeholder="Latitude"
+              class="coord-input"
+              min="-90"
+              max="90"
+            >
+            <input
+              type="number"
+              step="any"
+              [value]="coordinateInput().lng"
+              (input)="updateCoordinateInput('lng', $event)"
+              placeholder="Longitude"
+              class="coord-input"
+              min="-180"
+              max="180"
+            >
+            <button 
+              (click)="addPinByCoordinates()" 
+              class="coord-btn"
+              [disabled]="!coordinateInput().lat || !coordinateInput().lng"
+            >
+              Add Pin
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Location Buttons -->
+        <div class="quick-locations">
+          <h4>🏃 Quick Locations</h4>
+          <div class="quick-location-buttons">
+            <button class="quick-btn" (click)="zoomToCurrentLocation()">
+              📍 My Location
+            </button>
+            <button class="quick-btn" (click)="zoomToPredefinedLocation('nairobi')">
+              🏙️ Nairobi
+            </button>
+            <button class="quick-btn" (click)="zoomToPredefinedLocation('mombasa')">
+              🏖️ Mombasa
+            </button>
+            <button class="quick-btn" (click)="zoomToPredefinedLocation('kisumu')">
+              🌊 Kisumu
+            </button>
+            <button class="quick-btn" (click)="zoomToPredefinedLocation('nakuru')">
+              🦩 Nakuru
+            </button>
+            <button class="quick-btn" (click)="zoomToPredefinedLocation('nairobi-national-park')">
+              🦁 Nairobi NP
+            </button>
+            <button class="quick-btn" (click)="zoomToPredefinedLocation('lake-naivasha')">
+              💧 Lake Naivasha
+            </button>
+            <button class="quick-btn" (click)="zoomToPredefinedLocation('rift-valley')">
+              🏞️ Rift Valley
+            </button>
+          </div>
+        </div>
+
+        <!-- Layer Controls -->
+        <div class="layer-controls">
+          <h4>🗺️ Map Layers</h4>
+          <div class="layer-buttons">
+            <button class="control-btn" (click)="toggleLayer('restricted', true)">
+              🚫 Show Zones
+            </button>
+            <button class="control-btn" (click)="toggleLayer('restricted', false)">
+              🗺️ Hide Zones
+            </button>
+            <button class="control-btn" (click)="toggleLayer('buffer', true)">
+              📏 Show Buffers
+            </button>
+            <button class="control-btn" (click)="toggleLayer('buffer', false)">
+              🗺️ Hide Buffers
+            </button>
+            <button class="control-btn" (click)="toggleLayer('materials', true)">
+              📦 Show Materials
+            </button>
+            <button class="control-btn" (click)="toggleLayer('materials', false)">
+              🗺️ Hide Materials
+            </button>
+            <button class="control-btn clear-btn" (click)="clearSite()">
+              🗑️ Clear Site
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <div id="decision-map" class="decision-map"></div>
+
+      <!-- Map Legend -->
+      <div class="map-legend">
+        <h4>Map Legend</h4>
+        <div class="legend-item">
+          <div class="legend-marker site-marker-legend"></div>
+          <span>Selected Site</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-marker search-marker-legend" style="background: #8B4513;"></div>
+          <span>Search Result</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-marker material-marker-legend" style="background: #006600;"></div>
+          <span>Material Sources</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-marker restricted-zone-legend" style="background: #BB0000;"></div>
+          <span>Airports</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-marker restricted-zone-legend" style="background: #00AA00;"></div>
+          <span>Protected Areas</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-marker restricted-zone-legend" style="background: #003366;"></div>
+          <span>Water Bodies</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-marker restricted-zone-legend" style="background: #001a33;"></div>
+          <span>Roads & Railways</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-marker buffer-zone-legend"></div>
+          <span>Buffer Zones</span>
+        </div>
+        <div class="legend-item">
+          <div class="legend-marker alternative-marker-legend" style="background: #10B981;"></div>
+          <span>AI Suggested</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analysis Panel -->
+    <div class="analysis-panel">
+      @if (isLoading()) {
+        <div class="loading-state">
+          <div class="loading-spinner"></div>
+          <p>Loading materials data...</p>
+        </div>
+      }
+
+      @if (selectedSite() && isAnalyzing()) {
+        <div class="analyzing-state">
+          <div class="analyzing-spinner"></div>
+          <p>Analyzing site location...</p>
+        </div>
+      }
+
+      @if (analysisResult() && selectedSite() && !isAnalyzing()) {
+        <div class="analysis-result">
+          <!-- Site Status -->
+          <div class="status-card" [class.valid]="analysisResult()!.isValid" [class.invalid]="!analysisResult()!.isValid">
+            <div class="status-icon">
+              @if (analysisResult()!.isValid) {
+                ✅
+              } @else {
+                ⚠️
+              }
+            </div>
+            <div class="status-content">
+              <h3>
+                @if (analysisResult()!.isValid) {
+                  Site Appears Suitable
+                } @else {
+                  Site Has Restrictions
+                }
+              </h3>
+              <p>Lat: {{ selectedSite()!.lat | number:'1.4-4' }}, Lng: {{ selectedSite()!.lng | number:'1.4-4' }}</p>
+            </div>
+          </div>
+
+          <!-- AI Analysis Section -->
+          @if (aiRecommendation() && !isAIAnalyzing()) {
+            <div class="ai-recommendation-card">
+              <div class="ai-header">
+                <h3>🤖 AI Site Analysis</h3>
+                <span class="confidence-badge">
+                  {{ (aiRecommendation()!.confidence || 0) * 100 | number:'1.0-0' }}% confidence
+                </span>
+              </div>
+
+              <div class="risk-indicator risk-{{ aiRecommendation()!.riskLevel }}">
+                Risk Level: {{ aiRecommendation()!.riskLevel?.toUpperCase() }}
+              </div>
+
+              <div class="ai-summary">
+                <strong>Summary:</strong> {{ aiRecommendation()!.summary }}
+              </div>
+
+              <div class="ai-recommendation">
+                <strong>Recommendation:</strong> {{ aiRecommendation()!.recommendation }}
+              </div>
+
+
+
+              <div class="key-factors">
+                <strong>Key Factors:</strong>
+                <ul>
+                  @for (factor of aiRecommendation()!.keyFactors; track factor) {
+                    <li>{{ factor }}</li>
+                  }
+                </ul>
+              </div>
+
+              <div class="next-steps">
+                <strong>Next Steps:</strong>
+                <ol>
+                  @for (step of aiRecommendation()!.nextSteps; track step) {
+                    <li>{{ step }}</li>
+                  }
+                </ol>
+              </div>
+            </div>
+            <!-- Add this in the analysis section after AI recommendations -->
+@if (analysisResult() && selectedSite() && !isAnalyzing()) {
+  <div class="download-section">
+    <button 
+      (click)="downloadSiteAnalysis()" 
+      class="download-btn"
+      [disabled]="isGeneratingReport()"
+    >
+      @if (isGeneratingReport()) {
+        <div class="mini-spinner"></div>
+        Generating Report...
+      } @else {
+        📥 Download Site Analysis Report
+      }
+    </button>
+    <small>Get a detailed PDF report with all analysis data</small>
+  </div>
+}
+          }
+
+          @if (isAIAnalyzing()) {
+            <div class="ai-loading">
+              <div class="loading-spinner"></div>
+              <p>AI is analyzing site context and generating recommendations...</p>
+            </div>
+          }
+
+          @if (aiError()) {
+            <div class="ai-error">
+              ⚠️ {{ aiError() }}
+            </div>
+          }
+
+          <!-- Restrictions -->
+          @if (analysisResult()!.restrictions.length > 0) {
+            <div class="restrictions-section">
+              <h4>🚫 Restrictions & Warnings</h4>
+              <div class="restrictions-list">
+                @for (restriction of analysisResult()!.restrictions; track restriction) {
+                  <div class="restriction-item">
+                    {{ restriction }}
+                  </div>
+                }
+              </div>
+            </div>
+          }
+
+          <!-- Nearest Materials -->
+          @if (analysisResult()!.nearestMaterials.length > 0) {
+            <div class="materials-section">
+              <h4>📦 Nearest Material Sources</h4>
+              <div class="materials-list">
+                @for (item of analysisResult()!.nearestMaterials; track item.material.id) {
+                  <div class="material-item">
+                    <div class="material-icon">{{ item.material.icon || '📦' }}</div>
+                    <div class="material-info">
+                      <strong>{{ item.material.name }}</strong>
+                      <div class="material-details">
+                        <span>{{ item.material.location.name }}</span>
+                        <span class="distance">{{ item.distance }}m away</span>
+                        <span class="travel-time">(~{{ item.travelTime }} min travel)</span>
+                      </div>
+                      <div class="material-types">
+                        @for (type of item.material.type; track type) {
+                          <span class="material-type-tag">{{ type }}</span>
+                        }
+                      </div>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+          } @else {
+            <div class="materials-section">
+              <h4>📦 Material Sources</h4>
+              <div class="no-materials">
+                <p>No material sources found within reasonable distance.</p>
+                <p>Consider expanding your search area or using alternative materials.</p>
+              </div>
+            </div>
+          }
+
+          <!-- Basic Recommendations -->
+          @if (analysisResult()!.recommendations.length > 0 && !aiRecommendation()) {
+            <div class="recommendations-section">
+              <h4>💡 Recommendations</h4>
+              <div class="recommendations-list">
+                @for (recommendation of analysisResult()!.recommendations; track recommendation) {
+                  <div class="recommendation-item">
+                    {{ recommendation }}
+                  </div>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      } @else if (!selectedSite()) {
+        <div class="empty-state">
+          <div class="empty-icon">🗺️</div>
+          <h3>Select a Site</h3>
+          <p>Click anywhere on the map to analyze a potential construction site.</p>
+          <p>The system will check for restrictions using local GeoJSON data and find the nearest material sources.</p>
+          
+          <div class="selection-options">
+            <h4>📍 Multiple Ways to Select a Site:</h4>
+            <ul>
+              <li><strong>Click on the map</strong> - Direct selection</li>
+              <li><strong>Search for a location</strong> - Use the search box above the map</li>
+              <li><strong>Enter coordinates</strong> - Use the coordinate input form</li>
+              <li><strong>Quick locations</strong> - Use predefined Kenyan locations</li>
+              <li><strong>Your location</strong> - Use the "My Location" button</li>
+            </ul>
+          </div>
+          
+          @if (materials().length > 0) {
+            <div class="materials-count">
+              <small>📊 {{ materials().length }} material sources loaded from database</small>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>
